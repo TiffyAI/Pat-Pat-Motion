@@ -38,9 +38,9 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// Ball, hole, and obstacles
-let ball = { x: 200, y: 500, radius: 10, vx: 0, vy: 0 };
-let hole = { x: 100, y: 100, radius: 15 };
+// Bigger ball & hole
+let ball = { x: 200, y: 500, radius: 14, vx: 0, vy: 0 };
+let hole = { x: 100, y: 100, radius: 20 };
 let level = 1;
 let walls = [
   { type: "rect", x: 50, y: 200, w: 300, h: 10 },
@@ -49,7 +49,7 @@ let walls = [
 let ax = 0, ay = 0;
 
 // Sound effect
-let scoreSound = new Audio("Bubble.m4a");
+let scoreSound = new Audio("Bubble.wav");
 
 if (window.DeviceMotionEvent) {
   window.addEventListener('devicemotion', (e) => {
@@ -129,9 +129,9 @@ function checkCollision(nextX, nextY) {
 }
 
 function updateBall() {
-  // Inverted controls
-  ball.vx -= ax * 0.1;
-  ball.vy -= ay * 0.1;
+  // Left/right normal, up/down inverted
+  ball.vx += ax * 0.1;    // normal left/right
+  ball.vy -= ay * 0.1;    // inverted up/down
 
   let nextX = ball.x + ball.vx;
   let nextY = ball.y + ball.vy;
