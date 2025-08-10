@@ -93,31 +93,38 @@ function drawWalls() {
 }
 
 function updateBall() {
+  // Fixed controls: left is left, up is up
   ball.vx += ax * 0.1;
-  ball.vy += ay * -0.1; // invert y for natural tilt feel
-  ball.x += ball.vx;
-  ball.y += ball.vy;
+  ball.vy += ay * 0.1;
+
+  let nextX = ball.x + ball.vx;
+  let nextY = ball.y + ball.vy;
+
+  // Wall boundaries
+  if (nextX - ball.radius < 0) { nextX = ball.radius; ball.vx = 0; }
+  if (nextX + ball.radius > canvas.width) { nextX = canvas.width - ball.radius; ball.vx = 0; }
+  if (nextY - ball.radius < 0) { nextY = ball.radius; ball.vy = 0; }
+  if (nextY + ball.radius > canvas.height) { nextY = canvas.height - ball.radius; ball.vy = 0; }
+
+  // Solid obstacle collision
+  let blocked = false;
+  walls.forEach(w => {
+    if (nextX + ball.radius > w.x && nextX - ball.radius < w.x + w.w &&
+        nextY + ball.radius > w.y && nextY - ball.radius < w.y + w.h) {
+      blocked = true;
+    }
+  });
+
+  if (!blocked) {
+    ball.x = nextX;
+    ball.y = nextY;
+  } else {
+    ball.vx = 0;
+    ball.vy = 0;
+  }
 
   ball.vx *= 0.98;
   ball.vy *= 0.98;
-
-  // Wall boundaries
-  if (ball.x - ball.radius < 0) { ball.x = ball.radius; ball.vx *= -0.5; }
-  if (ball.x + ball.radius > canvas.width) { ball.x = canvas.width - ball.radius; ball.vx *= -0.5; }
-  if (ball.y - ball.radius < 0) { ball.y = ball.radius; ball.vy *= -0.5; }
-  if (ball.y + ball.radius > canvas.height) { ball.y = canvas.height - ball.radius; ball.vy *= -0.5; }
-
-  // Collide with obstacles
-  walls.forEach(w => {
-    if (ball.x + ball.radius > w.x && ball.x - ball.radius < w.x + w.w &&
-        ball.y + ball.radius > w.y && ball.y - ball.radius < w.y + w.h) {
-      if (Math.abs((ball.y - w.y)) < Math.abs((ball.x - w.x))) {
-        ball.vx *= -0.5;
-      } else {
-        ball.vy *= -0.5;
-      }
-    }
-  });
 
   // Check hole collision
   let dx = ball.x - hole.x;
