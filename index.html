@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TiffyAI Tilt Game</title>
+<style>
+  body {
+    background: black;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+    margin: 0;
+    padding: 0;
+  }
+  canvas {
+    display: block;
+    margin: 0 auto;
+    background: #111;
+    border: 2px solid #4af0f8;
+    border-radius: 12px;
+  }
+</style>
+</head>
+<body>
+
+<h1>TiffyAI Tilt Game</h1>
+<p>Level: <span id="level">1</span></p>
+<canvas id="gameCanvas" width="400" height="600"></canvas>
+
+<audio id="scoreSound" src="Bubble.wav"></audio>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreSound = document.getElementById('scoreSound');
+
+let ball = { x: 200, y: 300, radius: 18, vx: 0, vy: 0 };
+let hole = { x: 100, y: 100, radius: 25 };
+let ax = 0, ay = 0;
+let level = 1;
+let obstacles = [];
+
+function resetHole() {
+  hole.x = Math.random() * (canvas.width - hole.radius*2) + hole.radius;
+  hole.y = Math.random() * (canvas.height - hole.radius*2) + hole.radius;
+}
+
+function addObstacle() {
+  if (level % 3 === 0) {
+    obstacles.push({ type: 'triangle', x: Math.random() * 350, y: Math.random() * 550, size: 40 });
+  } else {
+    obstacles.push({ type: 'rect', x: Math.random() * 350, y: Math.random() * 550, width: 50, height: 20 });
+  }
+}
+
+function drawBall() {
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+  ctx.fillStyle = '#4af0f8';
+  ctx.shadowBlur = 20;
+  ctx.shadowColor = '#4af0f8';
+  ctx.fill();
+  ctx.closePath();
+}
+
+function drawHole() {
+  ctx.beginPath();
+  ctx.arc(hole.x, hole.y, hole.radius, 0, Math.PI * 2);
+  ctx.fillStyle = '#ff4af0';
+  ctx.shadowBlur = 20;
+  ctx.shadowColor = '#ff4af0';
+  ctx.fill();
+  ctx.closePath();
+}
+
+function drawObstacles() {
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#888';
+  obstacles.forEach(obs => {
+    if (obs.type === 'rect') {
+      ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+    } else if (obs.type === 'triangle') {
+      ctx.beginPath();
+      ctx.moveTo(obs.x, obs.y);
+      ctx.lineTo(obs.x + obs.size, obs.y);
+      ctx.lineTo(obs.x + obs.size/2, obs.y - obs.size);
+      ctx.closePath();
+      ctx.fill();
+    }
+  });
+}
+
+function checkCollision(nextX, nextY) {
+  return obstacles.some(obs => {
+    if (obs.type === 'rect') {
+      return nextX + ball.radius > obs.x &&
+             nextX - ball.radius < obs.x + obs.width &&
+             nextY + ball.radius > obs.y &&
+             nextY - ball.radius < obs.y + obs.height;
+    } else if (obs.type === 'triangle') {
+      return nextX > obs.x &&
+             nextX < obs.x + obs.size &&
+             nextY < obs.y &&
+             nextY > obs.y - obs.size;
+    }
+    return false;
+  });
+}
+
+function updateBall() {
+  // Natural controls — tilt direction = ball direction
+  ball.vx += ax * 0.1;
+  ball.vy += ay * 0.1;
+
+  let nextX = ball.x + ball.vx;
+  let nextY = ball.y + ball.vy;
+
+  if (nextX - ball.radius < 0) { nextX = ball.radius; ball.vx = 0; }
+  if (nextX + ball.radius > canvas.width) { nextX = canvas.width - ball.radius; ball.vx = 0; }
+  if (nextY - ball.radius < 0) { nextY = ball.radius; ball.vy = 0; }
+  if (nextY + ball.radius > canvas.height) { nextY = canvas.height - ball.radius; ball.vy = 0; }
+
+  if (!checkCollision(nextX, nextY)) {
+    ball.x = nextX;
+    ball.y = nextY;
+  } else {
+    ball.vx = 0;
+    ball.vy = 0;
+  }
+
+  ball.vx *= 0.98;
+  ball.vy *= 0.98;
+
+  let dx = ball.x - hole.x;
+  let dy = ball.y - hole.y;
+  let dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist < ball.radius + hole.radius) {
+    scoreSound.play();
+    level++;
+    document.getElementById('level').innerText = level;
+    resetHole();
+    addObstacle();
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawHole();
+  drawObstacles();
+  drawBall();
+}
+
+function gameLoop() {
+  updateBall();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+window.addEventListener('deviceorientation', function(e) {
+  ax = e.gamma || 0; // left/right
+  ay = e.beta || 0;  // forward/back
+});
+
+resetHole();
+addObstacle();
+gameLoop();
+</script>
+
+</body>
+</html>
