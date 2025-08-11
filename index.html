@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tilt Game - TiffyAI</title>
+<style>
+    body {
+        margin: 0;
+        overflow: hidden;
+        background: url('tilt.gif') no-repeat center center fixed;
+        background-size: cover;
+        font-family: 'Orbitron', sans-serif;
+    }
+    canvas {
+        display: block;
+    }
+    #accelerator {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        width: 90px;
+        height: 90px;
+        border-radius: 50%;
+        background: rgba(0, 200, 255, 0.2);
+        border: 2px solid rgba(0, 255, 255, 0.5);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 0 20px rgba(0, 255, 255, 0.9), inset 0 0 15px rgba(0, 200, 255, 0.7);
+        animation: pulse 1.5s infinite;
+        z-index: 2;
+        color: white;
+        font-family: Arial, sans-serif;
+        font-size: 14px;
+        text-align: center;
+        line-height: 90px;
+        user-select: none;
+        cursor: pointer;
+    }
+    #accelerator.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        animation: none;
+        box-shadow: none;
+        background: rgba(100, 100, 100, 0.2);
+        border: 2px solid rgba(100, 100, 100, 0.5);
+    }
+    @keyframes pulse {
+        0% { box-shadow: 0 0 10px rgba(0, 255, 255, 0.8), inset 0 0 10px rgba(0, 200, 255, 0.5); }
+        50% { box-shadow: 0 0 25px rgba(0, 255, 255, 1), inset 0 0 20px rgba(0, 200, 255, 0.7); }
+        100% { box-shadow: 0 0 10px rgba(0, 255, 255, 0.8), inset 0 0 10px rgba(0, 200, 255, 0.5); }
+    }
+    #score {
+        position: absolute;
+        top: 15px;
+        left: 20px;
+        font-size: 1.2rem;
+        color: #fff;
+        text-shadow: 0 0 5px #000;
+        font-family: Arial, sans-serif;
+    }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+<div id="score">Score: 0.00 TIFFY</div>
+<div id="accelerator">BOOST</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const ball = { x: canvas.width / 2, y: canvas.height / 2, r: 20, shimmerAngle: 0 };
+const goal = { x: Math.random() * (canvas.width - 60) + 30, y: Math.random() * (canvas.height - 60) + 30, size: 50 };
+let obstacles = [];
+let particles = [];
+let speed = { x: 0, y: 0 };
+let boostFactor = 2;
+
+const tiffyPerPoint = 0.02;
+let scoreTiffy = parseFloat(localStorage.getItem('tetrusScore') || '0'); // stored directly in TIFFY decimals
+updateScoreDisplay();
+
+let boostActive = false;
+let isBoostReady = true;
+const boostCooldownTime = 2000; // 2 seconds
+
+let goalImg = new Image();
+goalImg.src = "TiffyAI-Token.png";
+
+let bubbleSound = new Audio("Bubble.wav");
+let breakSound = new Audio("break.wav");
+
+function spawnObstacles(num = 5) {
+    const shapes = ['rect', 'circle', 'triangle'];
+    for (let i = 0; i < num; i++) {
+        obstacles.push({
+            x: Math.random() * (canvas.width - 60) + 30,
+            y: Math.random() * (canvas.height - 60) + 30,
+            size: Math.random() * 30 + 20,
+            shape: shapes[Math.floor(Math.random() * shapes.length)],
+            color: `hsl(${Math.random() * 360},100%,50%)`,
+        });
+    }
+}
+spawnObstacles(8);
+
+function drawBall() {
+    ctx.save();
+    ctx.translate(ball.x, ball.y);
+
+    // shimmer effect
+    ball.shimmerAngle += 0.1;
+    const gradient = ctx.createRadialGradient(0, 0, ball.r * 0.3, 0, 0, ball.r);
+    gradient.addColorStop(0, `hsl(${(ball.shimmerAngle * 50) % 360}, 100%, 70%)`);
+    gradient.addColorStop(1, "#fff");
+
+    ctx.beginPath();
+    ctx.arc(0, 0, ball.r, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = "#4af0f8";
+    ctx.fill();
+    ctx.restore();
+}
+
+function drawGoal() {
+    if (goalImg.complete) {
+        ctx.drawImage(goalImg, goal.x - goal.size / 2, goal.y - goal.size / 2, goal.size, goal.size);
+    } else {
+        ctx.beginPath();
+        ctx.arc(goal.x, goal.y, goal.size / 2, 0, Math.PI * 2);
+        ctx.fillStyle = "#ff4af0";
+        ctx.fill();
+    }
+}
+
+function drawObstacle(o) {
+    ctx.fillStyle = o.color;
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = o.color;
+    ctx.beginPath();
+    if (o.shape === 'rect') {
+        ctx.rect(o.x - o.size / 2, o.y - o.size / 2, o.size, o.size);
+    } else if (o.shape === 'circle') {
+        ctx.arc(o.x, o.y, o.size / 2, 0, Math.PI * 2);
+    } else if (o.shape === 'triangle') {
+        ctx.moveTo(o.x, o.y - o.size / 2);
+        ctx.lineTo(o.x - o.size / 2, o.y + o.size / 2);
+        ctx.lineTo(o.x + o.size / 2, o.y + o.size / 2);
+        ctx.closePath();
+    }
+    ctx.fill();
+    ctx.shadowBlur = 0;
+}
+
+function drawParticles() {
+    particles.forEach((p, i) => {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.alpha;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.alpha -= 0.02;
+        if (p.alpha <= 0) particles.splice(i, 1);
+    });
+}
+
+function splitObstacle(o) {
+    breakSound.currentTime = 0;
+    breakSound.play();
+    for (let i = 0; i < 5; i++) {
+        particles.push({
+            x: o.x,
+            y: o.y,
+            size: Math.random() * 5 + 3,
+            color: o.color,
+            vx: (Math.random() - 0.5) * 4,
+            vy: (Math.random() - 0.5) * 4,
+            alpha: 1
+        });
+    }
+}
+
+function updateScoreDisplay() {
+    document.getElementById("score").innerText = "Score: " + scoreTiffy.toFixed(2) + " TIFFY";
+}
+
+function checkCollisionCircleRect(cx, cy, cr, rx, ry, rw, rh) {
+    const distX = Math.abs(cx - rx - rw / 2);
+    const distY = Math.abs(cy - ry - rh / 2);
+
+    if (distX > (rw / 2 + cr)) { return false; }
+    if (distY > (rh / 2 + cr)) { return false; }
+
+    if (distX <= (rw / 2)) { return true; }
+    if (distY <= (rh / 2)) { return true; }
+
+    const dx = distX - rw / 2;
+    const dy = distY - rh / 2;
+    return (dx * dx + dy * dy <= (cr * cr));
+}
+
+function gameLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    drawGoal();
+    obstacles.forEach(o => drawObstacle(o));
+    drawParticles();
+    drawBall();
+
+    let multiplier = boostActive ? boostFactor : 1;
+    ball.x += speed.x * multiplier;
+    ball.y += speed.y * multiplier;
+
+    if (ball.x - ball.r < 0) ball.x = ball.r;
+    if (ball.x + ball.r > canvas.width) ball.x = canvas.width - ball.r;
+    if (ball.y - ball.r < 0) ball.y = ball.r;
+    if (ball.y + ball.r > canvas.height) ball.y = canvas.height - ball.r;
+
+    const dx = ball.x - goal.x;
+    const dy = ball.y - goal.y;
+    if (Math.sqrt(dx * dx + dy * dy) < ball.r + goal.size / 2) {
+        scoreTiffy += tiffyPerPoint; 
+        localStorage.setItem('tetrusScore', scoreTiffy.toFixed(2));
+        updateScoreDisplay();
+        bubbleSound.currentTime = 0;
+        bubbleSound.play();
+        goal.x = Math.random() * (canvas.width - 60) + 30;
+        goal.y = Math.random() * (canvas.height - 60) + 30;
+    }
+
+    obstacles = obstacles.filter(o => {
+        let hit = false;
+        if (o.shape === 'circle') {
+            const dist = Math.sqrt((ball.x - o.x) ** 2 + (ball.y - o.y) ** 2);
+            hit = dist < ball.r + o.size / 2;
+        } else {
+            hit = checkCollisionCircleRect(ball.x, ball.y, ball.r, o.x - o.size / 2, o.y - o.size / 2, o.size, o.size);
+        }
+
+        if (hit && boostActive) {
+            splitObstacle(o);
+            return false;
+        }
+        if (hit && !boostActive) {
+            const angle = Math.atan2(dy, dx);
+            speed.x = -Math.cos(angle) * 5;
+            speed.y = -Math.sin(angle) * 5;
+        }
+        return true;
+    });
+
+    requestAnimationFrame(gameLoop);
+}
+
+window.addEventListener("deviceorientation", function (event) {
+    if (event.gamma !== null && event.beta !== null) {
+        speed.x = event.gamma / 10;
+        speed.y = event.beta / 10;
+    }
+});
+
+const boostBtn = document.getElementById("accelerator");
+boostBtn.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    if (isBoostReady) {
+        boostActive = true;
+        isBoostReady = false;
+        boostBtn.classList.add('disabled');
+        setTimeout(() => {
+            isBoostReady = true;
+            boostBtn.classList.remove('disabled');
+        }, boostCooldownTime);
+    }
+});
+boostBtn.addEventListener("touchend", () => boostActive = false);
+boostBtn.addEventListener("mousedown", () => {
+    if (isBoostReady) {
+        boostActive = true;
+        isBoostReady = false;
+        boostBtn.classList.add('disabled');
+        setTimeout(() => {
+            isBoostReady = true;
+            boostBtn.classList.remove('disabled');
+        }, boostCooldownTime);
+    }
+});
+boostBtn.addEventListener("mouseup", () => boostActive = false);
+
+gameLoop();
+</script>
+
+</body>
+</html>
