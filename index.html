@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tilt Ball Game</title>
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: url("tilt.gif") no-repeat center center fixed;
+    background-size: cover;
+  }
+  canvas {
+    display: block;
+    margin: auto;
+    background: transparent;
+    position: relative;
+    z-index: 1;
+  }
+  #accelerator {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    background: rgba(0, 200, 255, 0.2);
+    border: 2px solid rgba(0, 255, 255, 0.5);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.9), inset 0 0 15px rgba(0, 200, 255, 0.7);
+    animation: pulse 1.5s infinite;
+    z-index: 2;
+    color: white;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    text-align: center;
+    line-height: 90px;
+    user-select: none;
+    cursor: pointer;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 10px rgba(0, 255, 255, 0.8), inset 0 0 10px rgba(0, 200, 255, 0.5); }
+    50% { box-shadow: 0 0 25px rgba(0, 255, 255, 1), inset 0 0 20px rgba(0, 200, 255, 0.7); }
+    100% { box-shadow: 0 0 10px rgba(0, 255, 255, 0.8), inset 0 0 10px rgba(0, 200, 255, 0.5); }
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<div id="accelerator">BOOST</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// Sounds
+const scoreSound = new Audio("Bubble.wav");
+
+let ball = { x: canvas.width / 2, y: canvas.height / 2, radius: 20, color: "#4af0f8" };
+let hole = { x: 100, y: 100, radius: 30, image: null };
+let speed = { x: 0, y: 0 };
+let score = 0;
+let obstacles = [];
+
+let rotationAngle = 0;
+let boostActive = false;
+let boostFactor = 2; // Speed multiplier when holding boost
+
+// Load hole image
+hole.image = new Image();
+hole.image.src = "TiffyAI-Token.png";
+
+// Create colorful obstacles
+for (let i = 0; i < 5; i++) {
+  obstacles.push({
+    x: Math.random() * (canvas.width - 100) + 50,
+    y: Math.random() * (canvas.height - 100) + 50,
+    size: 60,
+    color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+    glow: true
+  });
+}
+
+function drawBall() {
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+  ctx.fillStyle = ball.color;
+  ctx.shadowBlur = 20;
+  ctx.shadowColor = ball.color;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.closePath();
+}
+
+function drawHole() {
+  if (hole.image.complete) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(hole.x, hole.y, hole.radius, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(hole.image, hole.x - hole.radius, hole.y - hole.radius, hole.radius * 2, hole.radius * 2);
+    ctx.restore();
+  } else {
+    ctx.beginPath();
+    ctx.arc(hole.x, hole.y, hole.radius, 0, Math.PI * 2);
+    ctx.fillStyle = "#ff4af0";
+    ctx.fill();
+  }
+}
+
+function drawObstacles() {
+  rotationAngle += 0.01;
+  obstacles.forEach(obs => {
+    ctx.save();
+    ctx.translate(obs.x + obs.size / 2, obs.y + obs.size / 2);
+    ctx.rotate(rotationAngle);
+    ctx.translate(-obs.size / 2, -obs.size / 2);
+    ctx.beginPath();
+    ctx.moveTo(obs.size / 2, 0);
+    ctx.lineTo(obs.size, obs.size);
+    ctx.lineTo(0, obs.size);
+    ctx.closePath();
+    ctx.fillStyle = obs.color;
+    if (obs.glow) {
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = obs.color;
+    }
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  });
+}
+
+function updatePosition() {
+  let multiplier = boostActive ? boostFactor : 1;
+  ball.x += speed.x * multiplier;
+  ball.y += speed.y * multiplier;
+
+  // Collision with walls
+  if (ball.x - ball.radius < 0) ball.x = ball.radius;
+  if (ball.x + ball.radius > canvas.width) ball.x = canvas.width - ball.radius;
+  if (ball.y - ball.radius < 0) ball.y = ball.radius;
+  if (ball.y + ball.radius > canvas.height) ball.y = canvas.height - ball.radius;
+
+  // Collision with obstacles
+  for (let i = 0; i < obstacles.length; i++) {
+    let obs = obstacles[i];
+    if (
+      ball.x + ball.radius > obs.x &&
+      ball.x - ball.radius < obs.x + obs.size &&
+      ball.y + ball.radius > obs.y &&
+      ball.y - ball.radius < obs.y + obs.size
+    ) {
+      if (boostActive && obs.size > 30) {
+        // Split big obstacle into smaller ones
+        let newSize = obs.size / 2;
+        obstacles.splice(i, 1);
+        obstacles.push({
+          x: obs.x,
+          y: obs.y,
+          size: newSize,
+          color: obs.color,
+          glow: true
+        });
+        obstacles.push({
+          x: obs.x + newSize,
+          y: obs.y + newSize,
+          size: newSize,
+          color: obs.color,
+          glow: true
+        });
+        i--;
+      } else {
+        // Block movement normally
+        if (speed.x > 0) ball.x = obs.x - ball.radius;
+        if (speed.x < 0) ball.x = obs.x + obs.size + ball.radius;
+        if (speed.y > 0) ball.y = obs.y - ball.radius;
+        if (speed.y < 0) ball.y = obs.y + obs.size + ball.radius;
+      }
+    }
+  }
+
+  // Hole detection
+  const dx = ball.x - hole.x;
+  const dy = ball.y - hole.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  if (distance < ball.radius + hole.radius) {
+    score++;
+    scoreSound.play();
+    hole.x = Math.random() * (canvas.width - hole.radius * 2) + hole.radius;
+    hole.y = Math.random() * (canvas.height - hole.radius * 2) + hole.radius;
+  }
+}
+
+function drawScore() {
+  ctx.font = "20px Arial";
+  ctx.fillStyle = "#fff";
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = "#4af0f8";
+  ctx.fillText("Score: " + score, 20, 30);
+  ctx.shadowBlur = 0;
+}
+
+function gameLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawHole();
+  drawObstacles();
+  drawBall();
+  drawScore();
+  updatePosition();
+  requestAnimationFrame(gameLoop);
+}
+
+// Motion controls
+window.addEventListener("deviceorientation", function (event) {
+  speed.x = event.gamma / 10; // left/right
+  speed.y = event.beta / 10;  // up/down
+});
+
+// Accelerator button controls
+const boostBtn = document.getElementById("accelerator");
+boostBtn.addEventListener("touchstart", () => boostActive = true);
+boostBtn.addEventListener("touchend", () => boostActive = false);
+boostBtn.addEventListener("mousedown", () => boostActive = true);
+boostBtn.addEventListener("mouseup", () => boostActive = false);
+
+gameLoop();
+</script>
+</body>
+</html>
