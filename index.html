@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tilt Game - TiffyAI</title>
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: url('tilt.gif') no-repeat center center fixed;
+    background-size: cover;
+    font-family: 'Orbitron', sans-serif;
+  }
+  canvas {
+    display: block;
+  }
+  #boostBtn {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    padding: 20px 40px;
+    border-radius: 15px;
+    background: rgba(74, 240, 248, 0.15);
+    border: 2px solid rgba(74, 240, 248, 0.7);
+    box-shadow: 0 0 20px rgba(74, 240, 248, 0.9);
+    backdrop-filter: blur(8px);
+    color: #4af0f8;
+    font-size: 1.2rem;
+    font-weight: bold;
+    cursor: pointer;
+    user-select: none;
+    text-shadow: 0 0 5px #000;
+    transition: all 0.2s ease;
+  }
+  #boostBtn:active {
+    background: rgba(74, 240, 248, 0.3);
+    transform: scale(1.05);
+  }
+  #score {
+    position: absolute;
+    top: 15px;
+    left: 20px;
+    font-size: 1.2rem;
+    color: #fff;
+    text-shadow: 0 0 5px #000;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+<div id="score">Score: 0 TIFFY</div>
+<div id="boostBtn">BOOST</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const ball = { x: canvas.width/2, y: canvas.height/2, r: 20, speed: 2, vx: 0, vy: 0 };
+const goal = { x: Math.random() * (canvas.width - 60) + 30, y: Math.random() * (canvas.height - 60) + 30, size: 50 };
+let obstacles = [];
+let particles = [];
+
+const tiffyPerPoint = 0.02;
+let scorePoints = parseFloat(localStorage.getItem('tetrusScore') || '0');
+updateScoreDisplay();
+
+let boostActive = false;
+let goalImg = new Image();
+goalImg.src = "TiffyAI-Token.png";
+
+let bubbleSound = new Audio("Bubble.wav");
+
+function spawnObstacles(num = 5) {
+  const shapes = ['rect','circle','triangle'];
+  for (let i=0; i<num; i++) {
+    obstacles.push({
+      x: Math.random() * (canvas.width - 60) + 30,
+      y: Math.random() * (canvas.height - 60) + 30,
+      size: Math.random()*30+20,
+      shape: shapes[Math.floor(Math.random()*shapes.length)],
+      color: `hsl(${Math.random()*360},100%,50%)`,
+    });
+  }
+}
+spawnObstacles(8);
+
+function drawBall() {
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2);
+  ctx.fillStyle = "#fff";
+  ctx.shadowBlur = 15;
+  ctx.shadowColor = "#4af0f8";
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+function drawGoal() {
+  ctx.drawImage(goalImg, goal.x - goal.size/2, goal.y - goal.size/2, goal.size, goal.size);
+}
+
+function drawObstacle(o) {
+  ctx.fillStyle = o.color;
+  ctx.shadowBlur = 15;
+  ctx.shadowColor = o.color;
+  ctx.beginPath();
+  if(o.shape==='rect'){
+    ctx.rect(o.x - o.size/2, o.y - o.size/2, o.size, o.size);
+  } else if(o.shape==='circle'){
+    ctx.arc(o.x, o.y, o.size/2, 0, Math.PI*2);
+  } else if(o.shape==='triangle'){
+    ctx.moveTo(o.x, o.y - o.size/2);
+    ctx.lineTo(o.x - o.size/2, o.y + o.size/2);
+    ctx.lineTo(o.x + o.size/2, o.y + o.size/2);
+    ctx.closePath();
+  }
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+function drawParticles() {
+  particles.forEach((p,i) => {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.alpha;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    p.x += p.vx;
+    p.y += p.vy;
+    p.alpha -= 0.02;
+    if(p.alpha <= 0) particles.splice(i,1);
+  });
+}
+
+function splitObstacle(o) {
+  for(let i=0;i<5;i++){
+    particles.push({
+      x: o.x, y: o.y, size: Math.random()*5+3, color: o.color,
+      vx: (Math.random()-0.5)*4, vy: (Math.random()-0.5)*4,
+      alpha: 1
+    });
+  }
+}
+
+function updateScoreDisplay() {
+  document.getElementById("score").innerText = "Score: " + (scorePoints * tiffyPerPoint).toFixed(2) + " TIFFY";
+}
+
+function checkCollisionCircleRect(cx, cy, cr, rx, ry, rw, rh) {
+  const distX = Math.abs(cx - rx - rw/2);
+  const distY = Math.abs(cy - ry - rh/2);
+
+  if (distX > (rw/2 + cr)) { return false; }
+  if (distY > (rh/2 + cr)) { return false; }
+
+  if (distX <= (rw/2)) { return true; } 
+  if (distY <= (rh/2)) { return true; }
+
+  const dx=distX-rw/2;
+  const dy=distY-rh/2;
+  return (dx*dx+dy*dy <= (cr*cr));
+}
+
+function gameLoop() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  drawGoal();
+  obstacles.forEach(o => drawObstacle(o));
+  drawParticles();
+  drawBall();
+
+  ball.x += ball.vx * (boostActive ? 2 : 1);
+  ball.y += ball.vy * (boostActive ? 2 : 1);
+
+  // Wall boundaries
+  if(ball.x - ball.r < 0) ball.x = ball.r;
+  if(ball.x + ball.r > canvas.width) ball.x = canvas.width - ball.r;
+  if(ball.y - ball.r < 0) ball.y = ball.r;
+  if(ball.y + ball.r > canvas.height) ball.y = canvas.height - ball.r;
+
+  // Goal collision
+  const dx = ball.x - goal.x;
+  const dy = ball.y - goal.y;
+  if(Math.sqrt(dx*dx + dy*dy) < ball.r + goal.size/2) {
+    scorePoints++;
+    localStorage.setItem('tetrusScore', scorePoints);
+    updateScoreDisplay();
+    bubbleSound.currentTime = 0;
+    bubbleSound.play();
+    goal.x = Math.random() * (canvas.width - 60) + 30;
+    goal.y = Math.random() * (canvas.height - 60) + 30;
+  }
+
+  // Obstacle collisions
+  obstacles = obstacles.filter(o => {
+    let hit = false;
+    if(o.shape==='circle'){
+      const dist = Math.sqrt((ball.x-o.x)**2+(ball.y-o.y)**2);
+      hit = dist < ball.r + o.size/2;
+    } else {
+      hit = checkCollisionCircleRect(ball.x, ball.y, ball.r, o.x - o.size/2, o.y - o.size/2, o.size, o.size);
+    }
+
+    if(hit && boostActive){
+      splitObstacle(o);
+      return false; // remove
+    }
+    if(hit && !boostActive){
+      // bounce back
+      ball.vx *= -0.5;
+      ball.vy *= -0.5;
+    }
+    return true;
+  });
+
+  requestAnimationFrame(gameLoop);
+}
+
+window.addEventListener('deviceorientation', function(e) {
+  ball.vx += e.gamma / 90; // left/right stays normal
+  ball.vy -= e.beta / 90; // invert up/down so tilt feels natural
+});
+
+document.getElementById("boostBtn").addEventListener("touchstart", () => boostActive = true);
+document.getElementById("boostBtn").addEventListener("touchend", () => boostActive = false);
+document.getElementById("boostBtn").addEventListener("mousedown", () => boostActive = true);
+document.getElementById("boostBtn").addEventListener("mouseup", () => boostActive = false);
+
+gameLoop();
+</script>
+
+</body>
+</html>
