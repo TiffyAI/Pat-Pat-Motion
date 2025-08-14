@@ -1,0 +1,21 @@
+{
+  "name": "Motion Power Sphere",
+  "short_name": "Motion Power",
+  "description": "Tilt your device to earn TIFFY tokens in this fun web-based game.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#00ffff",
+  "icons": [
+    {
+      "src": "logo-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "logo-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
